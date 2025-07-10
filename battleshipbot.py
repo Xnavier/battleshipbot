@@ -1,90 +1,145 @@
 import discord
 from discord.ext import commands
 from discord import app_commands, Embed
-from pymongo import MongoClient
-import random
-import string
+from pymongo.mongo_client import MongoClient
+from pymongo.server_api import ServerApi
 import os
+import random
 
 intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="/", intents=intents)
 
-db_client = MongoClient(os.environ["MONGO_URI"])
-db = db_client["battleship"]
+DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
+MONGO_URI = os.getenv("MONGO_URI")
+
+uri = MONGO_URI
+client = MongoClient(uri, server_api=ServerApi('1'))
+db = client["battleship"]
 collection = db["games"]
 
-TILE_EMOJIS = {
-    "water": "🟦",
-    "miss": "⬜",
-    "hit": "🟥",
-    "sunk": "⬛"
-}
-
-SHIP_SIZES = [5, 4, 3, 3, 2]  # Carrier, Battleship, Cruiser, Submarine, Destroyer
-
-def generate_game_id():
-    return ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
-
-def place_ships(width, height, total_tiles):
-    board = [["water" for _ in range(width)] for _ in range(height)]
-    ships = []
-    placed_tiles = 0
-    sizes = SHIP_SIZES.copy()
-    while sizes and placed_tiles < total_tiles:
-        size = sizes.pop(0)
-        for _ in range(100):
-            horizontal = random.choice([True, False])
-            if horizontal:
-                x = random.randint(0, width - size)
-                y = random.randint(0, height - 1)
-                if all(board[y][x + i] == "water" for i in range(size)):
-                    for i in range(size):
-                        board[y][x + i] = f"ship-{len(ships)}"
-                    ships.append([(y, x + i) for i in range(size)])
-                    placed_tiles += size
-                    break
-            else:
-                x = random.randint(0, width - 1)
-                y = random.randint(0, height - size)
-                if all(board[y + i][x] == "water" for i in range(size)):
-                    for i in range(size):
-                        board[y + i][x] = f"ship-{len(ships)}"
-                    ships.append([(y + i, x) for i in range(size)])
-                    placed_tiles += size
-                    break
-    return board, ships
+# --- Helper Functions ---
 
 def render_board(board, hits):
-    rows = []
     width = len(board[0])
-    header = "⬛" + ''.join(f"{i+1:02}" for i in range(width))
-    rows.append(header)
-    for i, row in enumerate(board):
-        row_str = chr(65 + i)
-        for j, cell in enumerate(row):
-            if (i, j) in hits:
-                if cell.startswith("ship"):
-                    row_str += TILE_EMOJIS["hit"]
+    height = len(board)
+    header = "  " + " ".join(str(i + 1) for i in range(width)) + "\n"
+    rows = []
+    for y in range(height):
+        row_str = chr(65 + y) + " "
+        for x in range(width):
+            pos = (y, x)
+            if pos in hits:
+                cell = board[y][x]
+                if cell > 0:
+                    row_str += "⬛ "  # hit ship (sunk logic handled separately)
                 else:
-                    row_str += TILE_EMOJIS["miss"]
+                    row_str += "⬜ "  # miss
             else:
-                row_str += TILE_EMOJIS["water"]
+                row_str += "🟦 "  # unshot
         rows.append(row_str)
-    return "\n".join(rows)
+    return header + "\n".join(rows)
 
-def is_ship_sunk(ship_cells, hits):
-    return all(cell in hits for cell in ship_cells)
+def is_ship_sunk(ship_coords, hits):
+    return all(coord in hits for coord in ship_coords)
 
 def all_ships_sunk(ships, hits):
     return all(is_ship_sunk(ship, hits) for ship in ships)
 
-@bot.tree.command(name="start", description="Start a new battleship game")
-@app_commands.describe(width="Width of board", height="Height of board", ships="Number of ship tiles")
-async def start(interaction: discord.Interaction, width: int, height: int, ships: int):
-    game_id = generate_game_id()
-    board1, ships1 = place_ships(width, height, ships)
-    board2, ships2 = place_ships(width, height, ships)
+def generate_ship_pool(target_tiles):
+    base_lengths = [5, 4, 3, 3, 2]
+    pool = []
+    while sum(pool) + min(base_lengths) <= target_tiles:
+        choices = base_lengths.copy()
+        random.shuffle(choices)
+        for length in choices:
+            if sum(pool) + length <= target_tiles:
+                pool.append(length)
+    if sum(pool) < target_tiles:
+        return pool  # tolerate 1 short
+    while sum(pool) > target_tiles:
+        pool.pop()
+    return pool
 
+def place_ships(width, height, ship_lengths):
+    board = [[0] * width for _ in range(height)]
+    ships = []
+    ship_id = 1
+    max_total_attempts = 1000
+
+    for length in ship_lengths:
+        attempts = 0
+        while attempts < max_total_attempts:
+            attempts += 1
+            orientation = random.choices(
+                ["H", "V", "D", "A"], weights=[4, 4, 1, 1], k=1
+            )[0]
+
+            if orientation == "H":
+                x = random.randint(0, width - length)
+                y = random.randint(0, height - 1)
+                coords = [(y, x + i) for i in range(length)]
+            elif orientation == "V":
+                x = random.randint(0, width - 1)
+                y = random.randint(0, height - length)
+                coords = [(y + i, x) for i in range(length)]
+            elif orientation == "D":
+                x = random.randint(0, width - length)
+                y = random.randint(0, height - length)
+                coords = [(y + i, x + i) for i in range(length)]
+            else:  # "A"
+                x = random.randint(length - 1, width - 1)
+                y = random.randint(0, height - length)
+                coords = [(y + i, x - i) for i in range(length)]
+
+            if any(board[y][x] != 0 for y, x in coords):
+                continue
+
+            # Check adjacency
+            touching_ships = set()
+            for y, x in coords:
+                for dy in [-1, 0, 1]:
+                    for dx in [-1, 0, 1]:
+                        ny, nx = y + dy, x + dx
+                        if 0 <= ny < height and 0 <= nx < width:
+                            if board[ny][nx] > 0 and (ny, nx) not in coords:
+                                touching_ships.add(board[ny][nx])
+
+            if len(touching_ships) >= 3:
+                continue
+            if len(touching_ships) == 2 and random.random() < 0.9:
+                continue
+            if len(touching_ships) == 1 and random.random() < 0.6:
+                continue
+
+            for y, x in coords:
+                board[y][x] = ship_id
+            ships.append(coords)
+            ship_id += 1
+            break
+        else:
+            raise ValueError("Too many failed placement attempts")
+
+    return board, ships
+
+# --- Discord Commands ---
+
+@bot.tree.command(name="start", description="Start a new battleship game")
+@app_commands.describe(width="Board width", height="Board height", ships="Total number of ship tiles")
+async def start(interaction: discord.Interaction, width: int, height: int, ships: int):
+    await interaction.response.defer()
+    if width < 5 or height < 5 or ships < 2:
+        await interaction.followup.send("Minimum board size is 5x5 and at least 2 ship tiles.", ephemeral=True)
+        return
+
+    ship_pool = generate_ship_pool(ships)
+    try:
+        board1, ships1 = place_ships(width, height, ship_pool)
+        board2, ships2 = place_ships(width, height, ship_pool)
+    except ValueError:
+        await interaction.followup.send("Failed to place ships. Try a larger board or fewer ships.", ephemeral=True)
+        return
+
+    game_id = str(random.randint(1000, 9999))
     collection.insert_one({
         "game_id": game_id,
         "width": width,
@@ -98,91 +153,86 @@ async def start(interaction: discord.Interaction, width: int, height: int, ships
         "channel1": None,
         "channel2": None
     })
-    await interaction.response.send_message(f"Game created with ID: **{game_id}**")
 
-@bot.tree.command(name="join", description="Join a battleship game")
+    await interaction.followup.send(f"New game created! Game ID: {game_id}\nUse `/join` in two channels to play.")
+
+@bot.tree.command(name="join", description="Join a battleship game in this channel")
 @app_commands.describe(gameid="The ID of the game to join")
 async def join(interaction: discord.Interaction, gameid: str):
+    await interaction.response.defer(ephemeral=True)
+
     game = collection.find_one({"game_id": gameid})
     if not game:
-        await interaction.response.send_message("Game not found.", ephemeral=True)
+        await interaction.followup.send("Game not found.", ephemeral=True)
         return
 
-    update = {}
-    if not game["channel1"]:
-        update["channel1"] = interaction.channel.id
+    cid = interaction.channel.id
+    if game["channel1"] is None:
+        collection.update_one({"game_id": gameid}, {"$set": {"channel1": cid}})
         team = 1
-    elif not game["channel2"]:
-        update["channel2"] = interaction.channel.id
+    elif game["channel2"] is None and game["channel1"] != cid:
+        collection.update_one({"game_id": gameid}, {"$set": {"channel2": cid}})
         team = 2
     else:
-        await interaction.response.send_message("Both teams have already joined.", ephemeral=True)
+        await interaction.followup.send("Game already has two channels.", ephemeral=True)
         return
 
-    collection.update_one({"game_id": gameid}, {"$set": update})
-    board = game[f"board{3 - team}"]
-    hits = game[f"hits{3 - team}"]
-    await interaction.response.send_message(f"Joined game {gameid} as Team {team}!\nHere is the opponent board:",
-                                            embed=Embed(title=f"Team {team} Target Grid", description=render_board(board, hits)))
+    opp_team = 3 - team
+    hits = set(tuple(pos) for pos in game[f"hits{opp_team}"])
+    board = game[f"board{opp_team}"]
 
-@bot.tree.command(name="shoot", description="Shoot a tile on the enemy board")
-@app_commands.describe(row="Row letter", column="Column number")
+    embed = Embed(title=f"Team {team} Target Grid", description=render_board(board, hits))
+    await interaction.channel.send(f"You joined game {gameid} as Team {team}.", embed=embed)
+    await interaction.followup.send("Successfully joined the game.", ephemeral=True)
+
+@bot.tree.command(name="shoot", description="Shoot at a coordinate on the board")
+@app_commands.describe(row="Letter A-Z", column="Number 1+" )
 async def shoot(interaction: discord.Interaction, row: str, column: int):
+    await interaction.response.defer(ephemeral=True)
+
     row = row.upper()
-    channel_id = interaction.channel.id
-    game = collection.find_one({"$or": [{"channel1": channel_id}, {"channel2": channel_id}]})
-    if not game:
-        await interaction.response.send_message("You're not in a valid game.", ephemeral=True)
-        return
-
-    if game["channel1"] == channel_id:
-        team = 1
-        enemy_team = 2
-    else:
-        team = 2
-        enemy_team = 1
-
     y = ord(row) - 65
     x = column - 1
-    if not (0 <= y < game["height"] and 0 <= x < game["width"]):
-        await interaction.response.send_message("Invalid coordinates.", ephemeral=True)
+    cid = interaction.channel.id
+
+    game = collection.find_one({"$or": [{"channel1": cid}, {"channel2": cid}]})
+    if not game:
+        await interaction.followup.send("Channel not linked to any game.", ephemeral=True)
         return
 
-    hits_key = f"hits{team}"
-    board_key = f"board{enemy_team}"
-    ships_key = f"ships{enemy_team}"
+    team = 1 if game["channel1"] == cid else 2
+    opp = 3 - team
 
-    hits = set(tuple(pos) for pos in game[hits_key])
+    if not (0 <= y < game["height"] and 0 <= x < game["width"]):
+        await interaction.followup.send("Invalid coordinate.", ephemeral=True)
+        return
+
     pos = (y, x)
+    hits = set(tuple(p) for p in game[f"hits{team}"])
     if pos in hits:
-        await interaction.response.send_message("You already shot there.", ephemeral=True)
+        await interaction.followup.send("Already shot there.", ephemeral=True)
         return
 
     hits.add(pos)
-    collection.update_one({"game_id": game["game_id"]}, {"$set": {hits_key: list(hits)}})
+    collection.update_one({"game_id": game["game_id"]}, {"$set": {f"hits{team}": list(hits)}})
 
-    board = game[board_key]
-    ships = game[ships_key]
+    board = game[f"board{opp}"]
+    ships = game[f"ships{opp}"]
+    result = "💦 Miss!"
 
-    cell = board[y][x]
-    hit_result = "💦 Miss!"
-    sunk = False
-    if cell.startswith("ship"):
-        hit_result = "🔥 Hit!"
-        ship_index = int(cell.split("-")[1])
-        if is_ship_sunk(ships[ship_index], hits):
-            hit_result = "💣 Ship Sunk!"
-            sunk = True
+    if board[y][x] > 0:
+        ship_idx = board[y][x] - 1
+        if is_ship_sunk(ships[ship_idx], hits):
+            result = "💣 Ship Sunk!"
+        else:
+            result = "🔥 Hit!"
 
-    all_sunk = all_ships_sunk(ships, hits)
-    extra = "\n🎉 **You have sunk all your opponent's battleships, but you may continue to shoot tiles.**" if all_sunk else ""
+    extra = ""
+    if all_ships_sunk(ships, hits):
+        extra = "\n🎉 **You have sunk all your opponent's ships, but may keep shooting.**"
 
-    await interaction.response.send_message(
-        content=hit_result + extra,
-        embed=Embed(
-            title=f"Team {team} Target Grid",
-            description=render_board(board, hits)
-        )
-    )
+    embed = Embed(title=f"Team {team} Target Grid", description=render_board(board, hits))
+    await interaction.channel.send(content=result + extra, embed=embed)
+    await interaction.followup.send("Shot processed.", ephemeral=True)
 
-bot.run(os.environ["DISCORD_TOKEN"])
+bot.run(DISCORD_TOKEN)
