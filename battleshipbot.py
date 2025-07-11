@@ -35,7 +35,7 @@ def render_board_with_sunk(board, hits, ships, sunk_ships):
     height = len(board)
 
     number_emojis = ["0️⃣", "1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
-    header = "   " + "".join(number_emojis[:width]) + "\n"
+    header = "   " + "".join(number_emojis[:width]) #+ "\n"
 
     rows = []
     for y in range(height):
