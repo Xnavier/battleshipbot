@@ -251,8 +251,13 @@ async def shoot(interaction: discord.Interaction, row: str, column: int):
     missed_tiles = total_shots - sunk_tiles - hit_tiles
 
     stats_line = f"Shots: {total_shots} | Sunk Tiles: {sunk_tiles} | Hit Tiles: {hit_tiles} | Missed Tiles: {missed_tiles}"
+
+    score = 15*sunk_tiles + 10*hit_tiles + missed_tiles
+    score_line = f"Score: {score}"
+
     embed = Embed(title=f"Team {teamname} - Target Grid", description=render_board_with_sunk(board, hits, ships, sunk_ships))
     embed.add_field(name="Stats", value=stats_line, inline=False)
+    embed.add_field(name="Score", value=score_line, inline=False)
     await interaction.channel.send(content=result + extra, embed=embed)
     await interaction.followup.send("Shot processed.", ephemeral=True)
 
