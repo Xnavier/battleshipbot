@@ -85,7 +85,7 @@ def place_ships(width, height, ship_lengths):
     board = [[0] * width for _ in range(height)]
     ships = []
     ship_id = 1
-    max_total_attempts = 1000
+    max_total_attempts = 10000
 
     for length in ship_lengths:
         attempts = 0
