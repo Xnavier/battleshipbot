@@ -149,7 +149,7 @@ def place_ships(width, height, ship_lengths):
         attempts = 0
         while attempts < max_total_attempts:
             attempts += 1
-            orientation = random.choices(["H", "V", "D", "A"], weights=[4, 4, 1, 1])[0]
+            orientation = random.choices(["H", "V", "D", "A"], weights=[6, 6, 1, 1])[0]
 
             if orientation == "H":
                 x = random.randint(0, width - length)
