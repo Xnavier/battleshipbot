@@ -17,6 +17,12 @@ client = MongoClient(uri, server_api=ServerApi('1'))
 db = client["battleship"]
 collection = db["games"]
 
+AUTHORIZED_ADMINS = ["214078497331740672", "231804191448760320"]
+
+def is_admin(user: discord.Member) -> bool:
+    """Checks if the user is a server admin or in the authorized admin list."""
+    return user.guild_permissions.administrator or str(user.id) in AUTHORIZED_ADMINS
+
 # --- Helper Functions ---
 
 def render_board(board, hits, ships):
