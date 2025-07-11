@@ -237,7 +237,62 @@ async def shoot(interaction: discord.Interaction, row: str, column: int):
     await interaction.channel.send(content=result + extra, embed=embed)
     await interaction.followup.send("Shot processed.", ephemeral=True)
 
+@bot.tree.command(name="join", description="Join a battleship game in this channel")
+@app_commands.describe(gameid="The ID of the game to join", teamname="Name of your team")
+async def join(interaction: discord.Interaction, gameid: str, teamname: str):
+    await interaction.response.defer(ephemeral=True)
 
+    game = collection.find_one({"game_id": gameid})
+    if not game:
+        await interaction.followup.send("Game not found.", ephemeral=True)
+        return
+
+    cid = interaction.channel.id
+
+    # Check if this channel already joined as team1 or team2
+    if game.get("channel1") == cid:
+        team = 1
+        collection.update_one({"game_id": gameid}, {"$set": {"teamname1": teamname}})
+    elif game.get("channel2") == cid:
+        team = 2
+        collection.update_one({"game_id": gameid}, {"$set": {"teamname2": teamname}})
+    else:
+        # New join
+        if game.get("channel1") is None:
+            collection.update_one({"game_id": gameid}, {"$set": {"channel1": cid, "teamname1": teamname}})
+            team = 1
+        elif game.get("channel2") is None:
+            if cid == game.get("channel1"):
+                await interaction.followup.send("This channel is already team 1.", ephemeral=True)
+                return
+            collection.update_one({"game_id": gameid}, {"$set": {"channel2": cid, "teamname2": teamname}})
+            team = 2
+        else:
+            await interaction.followup.send("Game already has two channels.", ephemeral=True)
+            return
+
+    opp_team = 3 - team
+    hits = set(tuple(pos) for pos in game[f"hits{team}"])  # Use team's own hits (shots they've made)
+    board = game[f"board{opp_team}"]  # Opponent's board remains same
+    ships = [ [tuple(coord) for coord in ship] for ship in game[f"ships{opp_team}"] ]
+
+    embed = Embed(title=f"Team {team} Target Grid - {teamname}", description=render_board_with_sunk(board, hits, ships, set(game.get(f"sunk_ships{opp_team}", []))))
+    await interaction.channel.send(f"You joined game {gameid} as Team {team} - **{teamname}**.", embed=embed)
+    await interaction.followup.send("Successfully joined the game.", ephemeral=True)
+
+@bot.tree.command(name="delete", description="Delete a battleship game by its game ID (admin only)")
+@app_commands.describe(gameid="The ID of the game to delete")
+async def delete(interaction: discord.Interaction, gameid: str):
+    if not is_admin(interaction.user):
+        await interaction.response.send_message("You do not have permission to use this command.", ephemeral=True)
+        return
+
+    result = collection.delete_one({"game_id": gameid})
+    if result.deleted_count > 0:
+        await interaction.response.send_message(f"Game with ID `{gameid}` has been deleted.", ephemeral=True)
+    else:
+        await interaction.response.send_message(f"No game with ID `{gameid}` was found.", ephemeral=True)
+        
 @bot.event
 async def on_ready():
     print(f"Logged in as {bot.user}")
