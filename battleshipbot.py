@@ -242,7 +242,17 @@ async def shoot(interaction: discord.Interaction, row: str, column: int):
     if all_ships_sunk(ships, hits):
         extra = "\n\U0001f389 **You have sunk all your opponent's ships, but may keep shooting.**"
 
-    embed = Embed(title=f"Team {team} Target Grid", description=render_board_with_sunk(board, hits, ships, sunk_ships))
+    teamname = f"teamname{team}"
+
+    # Calculate stats
+    total_shots = len(hits)
+    sunk_tiles = sum(len(ships[idx]) for idx in sunk_ships)
+    hit_tiles = len([pos for idx in range(len(ships)) if idx not in sunk_ships for pos in ships[idx] if pos in hits])
+    missed_tiles = total_shots - sunk_tiles - hit_tiles
+
+    stats_line = f"Shots: {total_shots} | Sunk Tiles: {sunk_tiles} | Hit Tiles: {hit_tiles} | Missed Tiles: {missed_tiles}"
+    embed = Embed(title=f"Team {teamname} - Target Grid", description=render_board_with_sunk(board, hits, ships, sunk_ships))
+    embed.add_field(name="Stats", value=stats_line, inline=False)
     await interaction.channel.send(content=result + extra, embed=embed)
     await interaction.followup.send("Shot processed.", ephemeral=True)
 
