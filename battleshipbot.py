@@ -30,17 +30,17 @@ NUM_EMOJIS = [
     "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"
 ]
 
-
 def render_board_with_sunk(board, hits, ships, sunk_ships):
     width = len(board[0])
     height = len(board)
 
-    # Emoji header row
-    header = "   " + "".join(NUM_EMOJIS[:width]) + "\n"
+    number_emojis = ["0️⃣", "1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
+    header = "   " + "".join(number_emojis[:width]) + "\n"
 
     rows = []
     for y in range(height):
-        row_str = f"{chr(65 + y):>2} "
+        row_label = chr(65 + y)
+        row_str = f"{row_label:>2} "
         for x in range(width):
             pos = (y, x)
             cell = board[y][x]
@@ -48,16 +48,16 @@ def render_board_with_sunk(board, hits, ships, sunk_ships):
                 if cell > 0:
                     ship_index = cell - 1
                     if ship_index in sunk_ships:
-                        row_str += ":black_large_square:"
+                        row_str += "⬛"
                     else:
-                        row_str += ":red_square:"
+                        row_str += "🟥"
                 else:
-                    row_str += ":white_large_square:"
+                    row_str += "⬜"
             else:
-                row_str += ":blue_square:"
+                row_str += "🟦"
         rows.append(row_str)
-    return "```\n" + header + "\n" + "\n".join(rows) + "\n```"
 
+    return "```\n" + header + "\n" + "\n".join(rows) + "\n```"
 
 def is_ship_sunk(ship_coords, hits):
     return all(coord in hits for coord in ship_coords)
