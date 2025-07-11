@@ -87,6 +87,9 @@ def place_ships(width, height, ship_lengths):
     ship_id = 1
     max_total_attempts = 10000
 
+    total_tiles = width * height
+    placed_tiles = 0
+
     for length in ship_lengths:
         attempts = 0
         while attempts < max_total_attempts:
@@ -113,6 +116,7 @@ def place_ships(width, height, ship_lengths):
             if any(board[y][x] != 0 for y, x in coords):
                 continue
 
+            # Adjacency check
             touching_ships = set()
             for y, x in coords:
                 for dy in [-1, 0, 1]:
@@ -122,17 +126,27 @@ def place_ships(width, height, ship_lengths):
                             if board[ny][nx] > 0 and (ny, nx) not in coords:
                                 touching_ships.add(board[ny][nx])
 
-            if len(touching_ships) >= 3:
-                continue
-            if len(touching_ships) == 2 and random.random() < 0.9:
-                continue
-            if len(touching_ships) == 1 and random.random() < 0.6:
-                continue
+            num_touching = len(touching_ships)
+            fill_ratio = placed_tiles / total_tiles if total_tiles > 0 else 0
+
+            if num_touching == 1:
+                # Reject chance from 60% → 30%
+                reject_chance = 0.6 - 0.3 * fill_ratio
+                if random.random() < reject_chance:
+                    continue
+            elif num_touching == 2:
+                # Reject chance from 90% → 67%
+                reject_chance = 0.9 - 0.23 * fill_ratio
+                if random.random() < reject_chance:
+                    continue
+            elif num_touching >= 3:
+                continue  # Always reject 3+ adjacent ships
 
             for y, x in coords:
                 board[y][x] = ship_id
             ships.append(coords)
             ship_id += 1
+            placed_tiles += length
             break
         else:
             raise ValueError("Too many failed placement attempts")
