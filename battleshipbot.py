@@ -146,6 +146,9 @@ def place_ships(width, height, ship_lengths):
                 y = random.randint(0, height - length)
                 coords = [(y + i, x - i) for i in range(length)]
 
+            if any(not (0 <= y < height and 0 <= x < width) for y, x in coords):
+                continue  # Invalid position, skip
+
             if any(board[y][x] != 0 for y, x in coords):
                 continue
 
@@ -199,8 +202,8 @@ async def start(interaction: discord.Interaction, width: int, height: int, ships
     counts_str = ", ".join(f"{count}x{length}" for length, count in sorted(counts.items(), reverse=True))
 
     try:
-        board1, ships1 = place_ships(width, height, ship_pool)
-        board2, ships2 = place_ships(width, height, ship_pool)
+        board1, ships1, _ = place_ships(width, height, ship_pool)
+        board2, ships2, _ = place_ships(width, height, ship_pool)
     except ValueError:
         await interaction.followup.send("Failed to place ships. Try a larger board or fewer ships.", ephemeral=True)
         return
