@@ -29,12 +29,10 @@ def render_board_with_sunk(board, hits, ships, sunk_ships):
     width = len(board[0])
     height = len(board)
 
-    # Header: 2 spaces before numbers, numbers right-aligned to 2 chars, no extra spacing between numbers
-    header = "  " + " ".join(f"{i+1:>2}" for i in range(width)) + "\n"
+    header = "   " + " ".join(f"{i+1:2}" for i in range(width)) + "\n"
     rows = []
     for y in range(height):
-        # Row label: letter + one space
-        row_str = f"{chr(65 + y)} "
+        row_str = f"{chr(65 + y):>2} "
         for x in range(width):
             pos = (y, x)
             cell = board[y][x]
@@ -42,16 +40,15 @@ def render_board_with_sunk(board, hits, ships, sunk_ships):
                 if cell > 0:
                     ship_index = cell - 1
                     if ship_index in sunk_ships:
-                        row_str += "⬛  "  # sunk ship + 2 spaces for padding
+                        row_str += "⬛"  # sunk ship
                     else:
-                        row_str += "🟥  "  # hit but not sunk + 2 spaces
+                        row_str += "🟥"  # hit but not sunk
                 else:
-                    row_str += "⬜  "  # miss + 2 spaces
+                    row_str += "⬜"  # miss
             else:
-                row_str += "🟦  "  # water + 2 spaces
-        rows.append(row_str.rstrip())  # strip trailing spaces on each row
-
-    return "```\n" + header + "\n".join(rows) + "\n```"
+                row_str += "🟦"  # water
+        rows.append(row_str)
+    return "```\n" + header + "\n" + "\n".join(rows) + "\n```"
 
 def is_ship_sunk(ship_coords, hits):
     return all(coord in hits for coord in ship_coords)
@@ -209,8 +206,8 @@ async def join(interaction: discord.Interaction, gameid: str, teamname: str):
             return
 
     opp_team = 3 - team
-    hits = set(tuple(pos) for pos in game.get(f"hits{opp_team}", []))
-    board = game[f"board{opp_team}"]
+    hits = set(tuple(pos) for pos in game[f"hits{team}"])  # Use team's own hits (shots they've made)
+    board = game[f"board{opp_team}"]  # Opponent's board remains same
     ships = [ [tuple(coord) for coord in ship] for ship in game[f"ships{opp_team}"] ]
 
     embed = Embed(title=f"Team {team} Target Grid - {teamname}", description=render_board_with_sunk(board, hits, ships, set(game.get(f"sunk_ships{opp_team}", []))))
