@@ -81,18 +81,50 @@ def generate_ship_pool(target_tiles):
         pool.pop()
     return pool
 
+def analyze_clusters(board):
+    height = len(board)
+    width = len(board[0])
+    visited = [[False] * width for _ in range(height)]
+    ship_clusters = []
+    ship_to_cluster = {}
+
+    # Directions for adjacency: 8 directions (including diagonals)
+    directions = [(-1, -1), (-1, 0), (-1, 1),
+                  (0, -1),          (0, 1),
+                  (1, -1),  (1, 0), (1, 1)]
+
+    def dfs(y, x, cluster_set):
+        visited[y][x] = True
+        ship_id = board[y][x]
+        cluster_set.add(ship_id)
+        for dy, dx in directions:
+            ny, nx = y + dy, x + dx
+            if 0 <= ny < height and 0 <= nx < width and not visited[ny][nx]:
+                neighbor = board[ny][nx]
+                if neighbor > 0 and neighbor != ship_id:
+                    dfs(ny, nx, cluster_set)
+
+    # Loop through the board and explore clusters
+    for y in range(height):
+        for x in range(width):
+            if board[y][x] > 0 and not visited[y][x]:
+                cluster_set = set()
+                dfs(y, x, cluster_set)
+                if cluster_set:
+                    cluster_frozen = frozenset(cluster_set)
+                    if cluster_frozen not in ship_clusters:
+                        ship_clusters.append(cluster_frozen)
+
+    return ship_clusters
+
 def place_ships(width, height, ship_lengths):
     board = [[0] * width for _ in range(height)]
     ships = []
     ship_id = 1
     max_total_attempts = 10000
 
-    total_tiles = width * height
-    placed_tiles = 0
-
     for length in ship_lengths:
         attempts = 0
-        placed = False
         while attempts < max_total_attempts:
             attempts += 1
             orientation = random.choices(["H", "V", "D", "A"], weights=[4, 4, 1, 1])[0]
@@ -114,62 +146,44 @@ def place_ships(width, height, ship_lengths):
                 y = random.randint(0, height - length)
                 coords = [(y + i, x - i) for i in range(length)]
 
-            # ✅ Sanity check for bounds
-            if not all(0 <= cx < width and 0 <= cy < height for cy, cx in coords):
-                print(f"Ship {ship_id} (len={length}) rejected: out-of-bounds at {coords}")
+            if any(board[y][x] != 0 for y, x in coords):
                 continue
 
-            # ❌ Check for overlap
-            if any(board[cy][cx] != 0 for cy, cx in coords):
-                print(f"Ship {ship_id} (len={length}) rejected: overlaps at {coords}")
-                continue
-
-            # ❌ Adjacency check
+            # Check full 8-direction adjacency
             touching_ships = set()
             for y, x in coords:
-                for dy, dx in [(-1, 0), (1, 0), (0, -1), (0, 1)]:  # Only N, S, W, E
-                    ny, nx = y + dy, x + dx
-                    if 0 <= ny < height and 0 <= nx < width:
-                        if board[ny][nx] > 0 and (ny, nx) not in coords:
-                            touching_ships.add(board[ny][nx])
+                for dy in [-1, 0, 1]:
+                    for dx in [-1, 0, 1]:
+                        if dy == 0 and dx == 0:
+                            continue
+                        ny, nx = y + dy, x + dx
+                        if 0 <= ny < height and 0 <= nx < width:
+                            if board[ny][nx] > 0 and (ny, nx) not in coords:
+                                touching_ships.add(board[ny][nx])
 
-            num_touching = len(touching_ships)
-            fill_ratio = placed_tiles / total_tiles if total_tiles > 0 else 0
+            if len(touching_ships) >= 4:
+                continue  # Reject if touching 4 or more distinct ships
 
-            if num_touching == 1:
-                reject_chance = 0.6 - 0.6 * fill_ratio
-                if random.random() < reject_chance:
-                    print(f"Ship {ship_id} (len={length}) rejected: 1-touch (chance {reject_chance:.2f}) at {coords}")
-                    continue
-            elif num_touching == 2:
-                reject_chance = 0.9 - 0.9 * fill_ratio
-                if random.random() < reject_chance:
-                    print(f"Ship {ship_id} (len={length}) rejected: 2-touch (chance {reject_chance:.2f}) at {coords}")
-                    continue
-            elif num_touching >= 3:
-                print(f"Ship {ship_id} (len={length}) rejected: 3+ adjacent at {coords}")
-                continue
-
-            # ✅ Placement accepted
-            for cy, cx in coords:
-                board[cy][cx] = ship_id
+            for y, x in coords:
+                board[y][x] = ship_id
             ships.append(coords)
             ship_id += 1
-            placed_tiles += length
-            print(f"Ship {ship_id - 1} (len={length}) placed at {coords} (orientation: {orientation})")
-            placed = True
             break
+        else:
+            raise ValueError("Too many failed placement attempts")
 
-        if not placed:
-            raise ValueError(f"Too many failed attempts to place ship of length {length}")
+    # Log cluster info
+    clusters = analyze_clusters(board)
+    print("=== Cluster Info ===")
+    for i, cluster in enumerate(clusters, 1):
+        print(f"Cluster {i}: {len(cluster)} ships - IDs {sorted(cluster)}")
 
-    # Final counts for logging
+    # Count ship types
     ship_counts = {}
     for ship in ships:
         length = len(ship)
         ship_counts[length] = ship_counts.get(length, 0) + 1
 
-    print(f"Final board layout: {ship_counts}")
     return board, ships, ship_counts
 
 @bot.tree.command(name="start", description="Start a new battleship game")
