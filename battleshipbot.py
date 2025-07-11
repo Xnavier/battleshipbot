@@ -92,6 +92,7 @@ def place_ships(width, height, ship_lengths):
 
     for length in ship_lengths:
         attempts = 0
+        placed = False
         while attempts < max_total_attempts:
             attempts += 1
             orientation = random.choices(["H", "V", "D", "A"], weights=[4, 4, 1, 1])[0]
@@ -108,20 +109,27 @@ def place_ships(width, height, ship_lengths):
                 x = random.randint(0, width - length)
                 y = random.randint(0, height - length)
                 coords = [(y + i, x + i) for i in range(length)]
-            else:
+            else:  # Anti-diagonal
                 x = random.randint(length - 1, width - 1)
                 y = random.randint(0, height - length)
                 coords = [(y + i, x - i) for i in range(length)]
 
-            if any(board[y][x] != 0 for y, x in coords):
+            # ✅ Sanity check for bounds
+            if not all(0 <= cx < width and 0 <= cy < height for cy, cx in coords):
+                print(f"Ship {ship_id} (len={length}) rejected: out-of-bounds at {coords}")
                 continue
 
-            # Adjacency check
+            # ❌ Check for overlap
+            if any(board[cy][cx] != 0 for cy, cx in coords):
+                print(f"Ship {ship_id} (len={length}) rejected: overlaps at {coords}")
+                continue
+
+            # ❌ Adjacency check
             touching_ships = set()
-            for y, x in coords:
+            for cy, cx in coords:
                 for dy in [-1, 0, 1]:
                     for dx in [-1, 0, 1]:
-                        ny, nx = y + dy, x + dx
+                        ny, nx = cy + dy, cx + dx
                         if 0 <= ny < height and 0 <= nx < width:
                             if board[ny][nx] > 0 and (ny, nx) not in coords:
                                 touching_ships.add(board[ny][nx])
@@ -130,33 +138,39 @@ def place_ships(width, height, ship_lengths):
             fill_ratio = placed_tiles / total_tiles if total_tiles > 0 else 0
 
             if num_touching == 1:
-                # Reject chance from 60% → 30%
                 reject_chance = 0.6 - 0.3 * fill_ratio
                 if random.random() < reject_chance:
+                    print(f"Ship {ship_id} (len={length}) rejected: 1-touch (chance {reject_chance:.2f}) at {coords}")
                     continue
             elif num_touching == 2:
-                # Reject chance from 90% → 67%
                 reject_chance = 0.9 - 0.23 * fill_ratio
                 if random.random() < reject_chance:
+                    print(f"Ship {ship_id} (len={length}) rejected: 2-touch (chance {reject_chance:.2f}) at {coords}")
                     continue
             elif num_touching >= 3:
-                continue  # Always reject 3+ adjacent ships
+                print(f"Ship {ship_id} (len={length}) rejected: 3+ adjacent at {coords}")
+                continue
 
-            for y, x in coords:
-                board[y][x] = ship_id
+            # ✅ Placement accepted
+            for cy, cx in coords:
+                board[cy][cx] = ship_id
             ships.append(coords)
             ship_id += 1
             placed_tiles += length
+            print(f"Ship {ship_id - 1} (len={length}) placed at {coords} (orientation: {orientation})")
+            placed = True
             break
-        else:
-            raise ValueError("Too many failed placement attempts")
 
-    # Calculate ship counts by length
+        if not placed:
+            raise ValueError(f"Too many failed attempts to place ship of length {length}")
+
+    # Final counts for logging
     ship_counts = {}
     for ship in ships:
         length = len(ship)
         ship_counts[length] = ship_counts.get(length, 0) + 1
 
+    print(f"Final board layout: {ship_counts}")
     return board, ships, ship_counts
 
 @bot.tree.command(name="start", description="Start a new battleship game")
