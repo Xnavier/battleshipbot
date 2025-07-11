@@ -86,7 +86,6 @@ def analyze_clusters(board):
     width = len(board[0])
     visited = [[False] * width for _ in range(height)]
     ship_clusters = []
-    ship_to_cluster = {}
 
     # Directions for adjacency: 8 directions (including diagonals)
     directions = [(-1, -1), (-1, 0), (-1, 1),
@@ -101,7 +100,7 @@ def analyze_clusters(board):
             ny, nx = y + dy, x + dx
             if 0 <= ny < height and 0 <= nx < width and not visited[ny][nx]:
                 neighbor = board[ny][nx]
-                if neighbor > 0 and neighbor != ship_id:
+                if neighbor > 0:
                     dfs(ny, nx, cluster_set)
 
     # Loop through the board and explore clusters
@@ -116,6 +115,29 @@ def analyze_clusters(board):
                         ship_clusters.append(cluster_frozen)
 
     return ship_clusters
+
+def get_cluster_size(board, start_coords):
+    height = len(board)
+    width = len(board[0])
+    visited = set()
+    stack = list(start_coords)
+
+    while stack:
+        y, x = stack.pop()
+        if (y, x) in visited:
+            continue
+        visited.add((y, x))
+        # Explore all 8 directions (including diagonals)
+        for dy in [-1, 0, 1]:
+            for dx in [-1, 0, 1]:
+                if dy == 0 and dx == 0:
+                    continue
+                ny, nx = y + dy, x + dx
+                if 0 <= ny < height and 0 <= nx < width:
+                    if board[ny][nx] > 0 and (ny, nx) not in visited:
+                        stack.append((ny, nx))
+    # Return count of distinct ship IDs in cluster
+    return len({board[y][x] for y, x in visited})
 
 def place_ships(width, height, ship_lengths):
     board = [[0] * width for _ in range(height)]
@@ -150,32 +172,28 @@ def place_ships(width, height, ship_lengths):
                 continue  # Invalid position, skip
 
             if any(board[y][x] != 0 for y, x in coords):
-                continue
+                continue  # Space occupied, skip
 
-            # Check full 8-direction adjacency
-            touching_ships = set()
-            for y, x in coords:
-                for dy in [-1, 0, 1]:
-                    for dx in [-1, 0, 1]:
-                        if dy == 0 and dx == 0:
-                            continue
-                        ny, nx = y + dy, x + dx
-                        if 0 <= ny < height and 0 <= nx < width:
-                            if board[ny][nx] > 0 and (ny, nx) not in coords:
-                                touching_ships.add(board[ny][nx])
-
-            if len(touching_ships) >= 4:
-                continue  # Reject if touching 4 or more distinct ships
-
+            # Temporarily place ship
             for y, x in coords:
                 board[y][x] = ship_id
+
+            # Check cluster size around new ship
+            cluster_size = get_cluster_size(board, coords)
+            if cluster_size >= 4:
+                # Revert placement
+                for y, x in coords:
+                    board[y][x] = 0
+                continue
+
+            # Accept placement
             ships.append(coords)
             ship_id += 1
             break
         else:
             raise ValueError("Too many failed placement attempts")
 
-    # Log cluster info
+    # Log cluster info if you want
     clusters = analyze_clusters(board)
     print("=== Cluster Info ===")
     for i, cluster in enumerate(clusters, 1):
@@ -193,6 +211,11 @@ def place_ships(width, height, ship_lengths):
 @app_commands.describe(width="Board width (max 11)", height="Board height", ships="Total number of ship tiles")
 async def start(interaction: discord.Interaction, width: int, height: int, ships: int):
     await interaction.response.defer()
+
+    if not is_admin(interaction.user):
+        await interaction.response.send_message("You do not have permission to use this command.", ephemeral=True)
+        return
+    
     if width < 1 or width > 11 or height < 5 or ships < 2:
         await interaction.followup.send("Width must be between 1 and 11. Height >= 5. At least 2 ship tiles.", ephemeral=True)
         return
@@ -317,6 +340,10 @@ async def shoot(interaction: discord.Interaction, row: str, column: int):
 @app_commands.describe(gameid="The ID of the game to join", teamname="Name of your team")
 async def join(interaction: discord.Interaction, gameid: str, teamname: str):
     await interaction.response.defer(ephemeral=True)
+    
+    if not is_admin(interaction.user):
+        await interaction.response.send_message("You do not have permission to use this command.", ephemeral=True)
+        return
 
     game = collection.find_one({"game_id": gameid})
     if not game:
