@@ -25,7 +25,7 @@ def is_admin(user: discord.Member) -> bool:
 
 # --- Helper Functions ---
 
-def render_board(board, hits, ships):
+def render_board_with_sunk(board, hits, ships, sunk_ships):
     width = len(board[0])
     height = len(board)
 
@@ -39,14 +39,14 @@ def render_board(board, hits, ships):
             if pos in hits:
                 if cell > 0:
                     ship_index = cell - 1
-                    if is_ship_sunk(ships[ship_index], hits):
-                        row_str += "⬛"
+                    if ship_index in sunk_ships:
+                        row_str += "⬛"  # sunk ship
                     else:
-                        row_str += "🟥"
+                        row_str += "🟥"  # hit but not sunk
                 else:
-                    row_str += "⬜"
+                    row_str += "⬜"  # miss
             else:
-                row_str += "🟦"
+                row_str += "🟦"  # water
         rows.append(row_str)
     return "```\n" + header + "\n" + "\n".join(rows) + "\n```"
 
@@ -161,15 +161,19 @@ async def start(interaction: discord.Interaction, width: int, height: int, ships
         "ships2": ships2,
         "hits1": [],
         "hits2": [],
+        "sunk_ships1": [],
+        "sunk_ships2": [],
         "channel1": None,
-        "channel2": None
+        "channel2": None,
+        "teamname1": None,
+        "teamname2": None
     })
 
     await interaction.followup.send(f"New game created! Game ID: {game_id}\nUse `/join` in two channels to play.")
 
 @bot.tree.command(name="join", description="Join a battleship game in this channel")
-@app_commands.describe(gameid="The ID of the game to join")
-async def join(interaction: discord.Interaction, gameid: str):
+@app_commands.describe(gameid="The ID of the game to join", teamname="Name of your team")
+async def join(interaction: discord.Interaction, gameid: str, teamname: str):
     await interaction.response.defer(ephemeral=True)
 
     game = collection.find_one({"game_id": gameid})
@@ -178,26 +182,40 @@ async def join(interaction: discord.Interaction, gameid: str):
         return
 
     cid = interaction.channel.id
-    if game["channel1"] is None:
-        collection.update_one({"game_id": gameid}, {"$set": {"channel1": cid}})
+
+    # Check if this channel already joined as team1 or team2
+    if game.get("channel1") == cid:
         team = 1
-    elif game["channel2"] is None and game["channel1"] != cid:
-        collection.update_one({"game_id": gameid}, {"$set": {"channel2": cid}})
+        collection.update_one({"game_id": gameid}, {"$set": {"teamname1": teamname}})
+    elif game.get("channel2") == cid:
         team = 2
+        collection.update_one({"game_id": gameid}, {"$set": {"teamname2": teamname}})
     else:
-        await interaction.followup.send("Game already has two channels.", ephemeral=True)
-        return
+        # New join
+        if game.get("channel1") is None:
+            collection.update_one({"game_id": gameid}, {"$set": {"channel1": cid, "teamname1": teamname}})
+            team = 1
+        elif game.get("channel2") is None:
+            if cid == game.get("channel1"):
+                await interaction.followup.send("This channel is already team 1.", ephemeral=True)
+                return
+            collection.update_one({"game_id": gameid}, {"$set": {"channel2": cid, "teamname2": teamname}})
+            team = 2
+        else:
+            await interaction.followup.send("Game already has two channels.", ephemeral=True)
+            return
 
     opp_team = 3 - team
-    hits = set(tuple(pos) for pos in game[f"hits{opp_team}"])
+    hits = set(tuple(pos) for pos in game.get(f"hits{opp_team}", []))
     board = game[f"board{opp_team}"]
+    ships = [ [tuple(coord) for coord in ship] for ship in game[f"ships{opp_team}"] ]
 
-    embed = Embed(title=f"Team {team} Target Grid", description=render_board(board, hits))
-    await interaction.channel.send(f"You joined game {gameid} as Team {team}.", embed=embed)
+    embed = Embed(title=f"Team {team} Target Grid - {teamname}", description=render_board_with_sunk(board, hits, ships, set(game.get(f"sunk_ships{opp_team}", []))))
+    await interaction.channel.send(f"You joined game {gameid} as Team {team} - **{teamname}**.", embed=embed)
     await interaction.followup.send("Successfully joined the game.", ephemeral=True)
 
 @bot.tree.command(name="shoot", description="Shoot at a coordinate on the board")
-@app_commands.describe(row="Letter A-Z", column="Number 1+" )
+@app_commands.describe(row="Letter A-Z", column="Number 1+")
 async def shoot(interaction: discord.Interaction, row: str, column: int):
     await interaction.response.defer(ephemeral=True)
 
@@ -219,30 +237,44 @@ async def shoot(interaction: discord.Interaction, row: str, column: int):
         return
 
     pos = (y, x)
-    hits = set(tuple(p) for p in game[f"hits{team}"])
+    hits = set(tuple(p) for p in game.get(f"hits{team}", []))
     if pos in hits:
         await interaction.followup.send("Already shot there.", ephemeral=True)
         return
 
     hits.add(pos)
-    collection.update_one({"game_id": game["game_id"]}, {"$set": {f"hits{team}": list(hits)}})
+
+    sunk_key = f"sunk_ships{team}"
+    sunk_ships = set(game.get(sunk_key, []))
 
     board = game[f"board{opp}"]
     ships = [ [tuple(coord) for coord in ship] for ship in game[f"ships{opp}"] ]
+
     result = "💦 Miss!"
 
     if board[y][x] > 0:
         ship_idx = board[y][x] - 1
-        if is_ship_sunk(ships[ship_idx], hits):
-            result = "💣 Ship Sunk!"
+        if ship_idx not in sunk_ships:
+            if is_ship_sunk(ships[ship_idx], hits):
+                sunk_ships.add(ship_idx)
+                result = "💣 Ship Sunk!"
+            else:
+                result = "🔥 Hit!"
         else:
-            result = "🔥 Hit!"
+            result = "💣 Ship Sunk!"
+    else:
+        result = "💦 Miss!"
+
+    collection.update_one(
+        {"game_id": game["game_id"]},
+        {"$set": {f"hits{team}": list(hits), sunk_key: list(sunk_ships)}}
+    )
 
     extra = ""
     if all_ships_sunk(ships, hits):
         extra = "\n🎉 **You have sunk all your opponent's ships, but may keep shooting.**"
 
-    embed = Embed(title=f"Team {team} Target Grid", description=render_board(board, hits))
+    embed = Embed(title=f"Team {team} Target Grid", description=render_board_with_sunk(board, hits, ships, sunk_ships))
     await interaction.channel.send(content=result + extra, embed=embed)
     await interaction.followup.send("Shot processed.", ephemeral=True)
 
