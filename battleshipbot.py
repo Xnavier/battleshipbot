@@ -35,10 +35,12 @@ def render_board_with_sunk(board, hits, ships, sunk_ships):
     width = len(board[0])
     height = len(board)
 
-    header = "  " + "".join(NUM_EMOJIS[:width]) + "\n"
+    # Emoji header row
+    header = "   " + "".join(NUM_EMOJIS[:width]) + "\n"
+
     rows = []
     for y in range(height):
-        row_str = f"{chr(65 + y)} "
+        row_str = f"{chr(65 + y):>2} "
         for x in range(width):
             pos = (y, x)
             cell = board[y][x]
@@ -54,7 +56,7 @@ def render_board_with_sunk(board, hits, ships, sunk_ships):
             else:
                 row_str += ":blue_square:"
         rows.append(row_str)
-    return "\n".join([header] + rows)
+    return "```\n" + header + "\n" + "\n".join(rows) + "\n```"
 
 
 def is_ship_sunk(ship_coords, hits):
