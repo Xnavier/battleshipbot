@@ -235,4 +235,13 @@ async def shoot(interaction: discord.Interaction, row: str, column: int):
     await interaction.channel.send(content=result + extra, embed=embed)
     await interaction.followup.send("Shot processed.", ephemeral=True)
 
+@bot.event
+async def on_ready():
+    print(f"Logged in as {bot.user}")
+    try:
+        synced = await bot.tree.sync()
+        print(f"Synced {len(synced)} command(s)")
+    except Exception as e:
+        print(f"Failed to sync commands: {e}")
+
 bot.run(DISCORD_TOKEN)
