@@ -137,12 +137,12 @@ def place_ships(width, height, ship_lengths):
             fill_ratio = placed_tiles / total_tiles if total_tiles > 0 else 0
 
             if num_touching == 1:
-                reject_chance = 0.6 - 0.3 * fill_ratio
+                reject_chance = 0.6 - 0.6 * fill_ratio
                 if random.random() < reject_chance:
                     print(f"Ship {ship_id} (len={length}) rejected: 1-touch (chance {reject_chance:.2f}) at {coords}")
                     continue
             elif num_touching == 2:
-                reject_chance = 0.9 - 0.23 * fill_ratio
+                reject_chance = 0.9 - 0.9 * fill_ratio
                 if random.random() < reject_chance:
                     print(f"Ship {ship_id} (len={length}) rejected: 2-touch (chance {reject_chance:.2f}) at {coords}")
                     continue
