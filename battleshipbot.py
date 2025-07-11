@@ -5,6 +5,7 @@ from pymongo.mongo_client import MongoClient
 from pymongo.server_api import ServerApi
 import os
 import random
+from collections import Counter
 
 intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="/", intents=intents)
@@ -35,7 +36,7 @@ def render_board_with_sunk(board, hits, ships, sunk_ships):
     height = len(board)
 
     number_emojis = ["0️⃣", "1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
-    header = "   " + "".join(number_emojis[:width]) #+ "\n"
+    header = "   " + "".join(number_emojis[:width]) + "\n"
 
     rows = []
     for y in range(height):
@@ -62,10 +63,8 @@ def render_board_with_sunk(board, hits, ships, sunk_ships):
 def is_ship_sunk(ship_coords, hits):
     return all(coord in hits for coord in ship_coords)
 
-
 def all_ships_sunk(ships, hits):
     return all(is_ship_sunk(ship, hits) for ship in ships)
-
 
 def generate_ship_pool(target_tiles):
     base_lengths = [5, 4, 3, 3, 2]
@@ -81,7 +80,6 @@ def generate_ship_pool(target_tiles):
     while sum(pool) > target_tiles:
         pool.pop()
     return pool
-
 
 def place_ships(width, height, ship_lengths):
     board = [[0] * width for _ in range(height)]
@@ -139,8 +137,13 @@ def place_ships(width, height, ship_lengths):
         else:
             raise ValueError("Too many failed placement attempts")
 
-    return board, ships
+    # Calculate ship counts by length
+    ship_counts = {}
+    for ship in ships:
+        length = len(ship)
+        ship_counts[length] = ship_counts.get(length, 0) + 1
 
+    return board, ships, ship_counts
 
 @bot.tree.command(name="start", description="Start a new battleship game")
 @app_commands.describe(width="Board width (max 11)", height="Board height", ships="Total number of ship tiles")
@@ -151,6 +154,9 @@ async def start(interaction: discord.Interaction, width: int, height: int, ships
         return
 
     ship_pool = generate_ship_pool(ships)
+    counts = Counter(ship_pool)
+    counts_str = ", ".join(f"{count}x{length}" for length, count in sorted(counts.items(), reverse=True))
+
     try:
         board1, ships1 = place_ships(width, height, ship_pool)
         board2, ships2 = place_ships(width, height, ship_pool)
@@ -177,8 +183,11 @@ async def start(interaction: discord.Interaction, width: int, height: int, ships
         "teamname2": None
     })
 
-    await interaction.followup.send(f"New game created! Game ID: {game_id}\nUse `/join` in two channels to play.")
-
+    await interaction.followup.send(
+        f"New game created! Game ID: {game_id}\n"
+        f"Ship pool: {counts_str}\n"
+        f"Use `/join` in two channels to play."
+    )
 
 @bot.tree.command(name="shoot", description="Shoot at a coordinate on the board")
 @app_commands.describe(row="Letter A-Z", column="Number 0-10")
@@ -276,7 +285,7 @@ async def join(interaction: discord.Interaction, gameid: str, teamname: str):
     board = game[f"board{opp_team}"]  # Opponent's board remains same
     ships = [ [tuple(coord) for coord in ship] for ship in game[f"ships{opp_team}"] ]
 
-    embed = Embed(title=f"Team {team} Target Grid - {teamname}", description=render_board_with_sunk(board, hits, ships, set(game.get(f"sunk_ships{opp_team}", []))))
+    embed = Embed(title=f"Team {teamname} - Target Grid", description=render_board_with_sunk(board, hits, ships, set(game.get(f"sunk_ships{opp_team}", []))))
     await interaction.channel.send(f"You joined game {gameid} as Team {team} - **{teamname}**.", embed=embed)
     await interaction.followup.send("Successfully joined the game.", ephemeral=True)
 
@@ -292,7 +301,7 @@ async def delete(interaction: discord.Interaction, gameid: str):
         await interaction.response.send_message(f"Game with ID `{gameid}` has been deleted.", ephemeral=True)
     else:
         await interaction.response.send_message(f"No game with ID `{gameid}` was found.", ephemeral=True)
-        
+
 @bot.event
 async def on_ready():
     print(f"Logged in as {bot.user}")
