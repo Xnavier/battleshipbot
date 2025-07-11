@@ -126,13 +126,12 @@ def place_ships(width, height, ship_lengths):
 
             # ❌ Adjacency check
             touching_ships = set()
-            for cy, cx in coords:
-                for dy in [-1, 0, 1]:
-                    for dx in [-1, 0, 1]:
-                        ny, nx = cy + dy, cx + dx
-                        if 0 <= ny < height and 0 <= nx < width:
-                            if board[ny][nx] > 0 and (ny, nx) not in coords:
-                                touching_ships.add(board[ny][nx])
+            for y, x in coords:
+                for dy, dx in [(-1, 0), (1, 0), (0, -1), (0, 1)]:  # Only N, S, W, E
+                    ny, nx = y + dy, x + dx
+                    if 0 <= ny < height and 0 <= nx < width:
+                        if board[ny][nx] > 0 and (ny, nx) not in coords:
+                            touching_ships.add(board[ny][nx])
 
             num_touching = len(touching_ships)
             fill_ratio = placed_tiles / total_tiles if total_tiles > 0 else 0
