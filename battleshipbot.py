@@ -29,14 +29,14 @@ def render_board_with_sunk(board, hits, ships, sunk_ships):
     width = len(board[0])
     height = len(board)
 
-    # For numbers 1-9, add an extra space after to keep alignment consistent with two-digit numbers
+    # Header row
     header_nums = []
     for i in range(width):
         num = str(i + 1)
         if len(num) == 1:
-            header_nums.append(num + " ")  # add extra space after single-digit
+            header_nums.append(f" {num} ")  # space-padded
         else:
-            header_nums.append(num)        # no extra space after two-digit
+            header_nums.append(f"{num} ")   # two-digit
     header = "   " + "".join(header_nums) + "\n"
 
     rows = []
@@ -49,13 +49,13 @@ def render_board_with_sunk(board, hits, ships, sunk_ships):
                 if cell > 0:
                     ship_index = cell - 1
                     if ship_index in sunk_ships:
-                        row_str += "⬛"  # sunk ship
+                        row_str += ":black_large_square:"
                     else:
-                        row_str += "🟥"  # hit but not sunk
+                        row_str += ":red_square:"
                 else:
-                    row_str += "⬜"  # miss
+                    row_str += ":white_large_square:"
             else:
-                row_str += "🟦"  # water
+                row_str += ":blue_square:"
         rows.append(row_str)
     return "```\n" + header + "\n" + "\n".join(rows) + "\n```"
 
