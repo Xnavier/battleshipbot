@@ -238,11 +238,12 @@ async def shoot(interaction: discord.Interaction, row: str, column: int):
         {"$set": {f"hits{team}": list(hits), sunk_key: list(sunk_ships)}}
     )
 
+    # Extra message if all ships are sunk
     extra = ""
     if all_ships_sunk(ships, hits):
         extra = "\n\U0001f389 **You have sunk all your opponent's ships, but may keep shooting.**"
 
-    teamname = f"teamname{team}"
+    teamname = game.get(f"teamname{team}", f"Team {team}")
 
     # Calculate stats
     total_shots = len(hits)
@@ -251,14 +252,21 @@ async def shoot(interaction: discord.Interaction, row: str, column: int):
     missed_tiles = total_shots - sunk_tiles - hit_tiles
 
     stats_line = f"Shots: {total_shots} | Sunk Tiles: {sunk_tiles} | Hit Tiles: {hit_tiles} | Missed Tiles: {missed_tiles}"
-
-    score = 15*sunk_tiles + 10*hit_tiles + missed_tiles
+    score = 15 * sunk_tiles + 10 * hit_tiles + missed_tiles
     score_line = f"Score: {score}"
 
-    embed = Embed(title=f"Team {teamname} - Target Grid", description=render_board_with_sunk(board, hits, ships, sunk_ships))
+    user_display = interaction.user.display_name
+    coord_str = f"{row}{column}"
+    embed = Embed(
+        title=f"{teamname} - Target Grid",
+        description=f"**{user_display}** shot at space **{coord_str}**\n{result}{extra}"
+    )
+    embed.set_thumbnail(url=interaction.user.display_avatar.url)
     embed.add_field(name="Stats", value=stats_line, inline=False)
     embed.add_field(name="Score", value=score_line, inline=False)
-    await interaction.channel.send(content=result + extra, embed=embed)
+    embed.add_field(name="Board", value=render_board_with_sunk(board, hits, ships, sunk_ships), inline=False)
+
+    await interaction.channel.send(embed=embed)
     await interaction.followup.send("Shot processed.", ephemeral=True)
 
 @bot.tree.command(name="join", description="Join a battleship game in this channel")
