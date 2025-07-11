@@ -67,18 +67,20 @@ def all_ships_sunk(ships, hits):
     return all(is_ship_sunk(ship, hits) for ship in ships)
 
 def generate_ship_pool(target_tiles):
-    base_lengths = [5, 4, 3, 3, 2]
+    base_lengths = [5, 4, 3, 2]
+    weights = [2, 3, 7, 6]  # Adjust these weights as you like
+
     pool = []
+
     while sum(pool) + min(base_lengths) <= target_tiles:
-        choices = base_lengths.copy()
-        random.shuffle(choices)
-        for length in choices:
-            if sum(pool) + length <= target_tiles:
-                pool.append(length)
-    if sum(pool) < target_tiles:
-        return pool
+        length = random.choices(base_lengths, weights=weights)[0]
+        if sum(pool) + length <= target_tiles:
+            pool.append(length)
+
+    # If the sum overshoots target_tiles, remove last ships until fit
     while sum(pool) > target_tiles:
         pool.pop()
+
     return pool
 
 def analyze_clusters(board):
