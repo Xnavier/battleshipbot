@@ -228,7 +228,7 @@ async def shoot(interaction: discord.Interaction, row: str, column: int):
     collection.update_one({"game_id": game["game_id"]}, {"$set": {f"hits{team}": list(hits)}})
 
     board = game[f"board{opp}"]
-    ships = game[f"ships{opp}"]
+    ships = [ [tuple(coord) for coord in ship] for ship in game[f"ships{opp}"] ]
     result = "💦 Miss!"
 
     if board[y][x] > 0:
