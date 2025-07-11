@@ -29,10 +29,12 @@ def render_board_with_sunk(board, hits, ships, sunk_ships):
     width = len(board[0])
     height = len(board)
 
-    header = "   " + " ".join(f"{i+1:2}" for i in range(width)) + "\n"
+    # Header: 2 spaces before numbers, numbers right-aligned to 2 chars, no extra spacing between numbers
+    header = "  " + " ".join(f"{i+1:>2}" for i in range(width)) + "\n"
     rows = []
     for y in range(height):
-        row_str = f"{chr(65 + y):>2} "
+        # Row label: letter + one space
+        row_str = f"{chr(65 + y)} "
         for x in range(width):
             pos = (y, x)
             cell = board[y][x]
@@ -40,15 +42,16 @@ def render_board_with_sunk(board, hits, ships, sunk_ships):
                 if cell > 0:
                     ship_index = cell - 1
                     if ship_index in sunk_ships:
-                        row_str += "⬛"  # sunk ship
+                        row_str += "⬛  "  # sunk ship + 2 spaces for padding
                     else:
-                        row_str += "🟥"  # hit but not sunk
+                        row_str += "🟥  "  # hit but not sunk + 2 spaces
                 else:
-                    row_str += "⬜"  # miss
+                    row_str += "⬜  "  # miss + 2 spaces
             else:
-                row_str += "🟦"  # water
-        rows.append(row_str)
-    return "```\n" + header + "\n" + "\n".join(rows) + "\n```"
+                row_str += "🟦  "  # water + 2 spaces
+        rows.append(row_str.rstrip())  # strip trailing spaces on each row
+
+    return "```\n" + header + "\n".join(rows) + "\n```"
 
 def is_ship_sunk(ship_coords, hits):
     return all(coord in hits for coord in ship_coords)
