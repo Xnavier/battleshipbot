@@ -19,25 +19,30 @@ collection = db["games"]
 
 # --- Helper Functions ---
 
-def render_board(board, hits):
+def render_board(board, hits, ships):
     width = len(board[0])
     height = len(board)
-    header = "  " + " ".join(str(i + 1) for i in range(width)) + "\n"
+
+    header = "   " + " ".join(f"{i+1:2}" for i in range(width)) + "\n"
     rows = []
     for y in range(height):
-        row_str = chr(65 + y) + " "
+        row_str = f"{chr(65 + y):>2} "
         for x in range(width):
             pos = (y, x)
+            cell = board[y][x]
             if pos in hits:
-                cell = board[y][x]
                 if cell > 0:
-                    row_str += "⬛ "  # hit ship (sunk logic handled separately)
+                    ship_index = cell - 1
+                    if is_ship_sunk(ships[ship_index], hits):
+                        row_str += "⬛"
+                    else:
+                        row_str += "🟥"
                 else:
-                    row_str += "⬜ "  # miss
+                    row_str += "⬜"
             else:
-                row_str += "🟦 "  # unshot
+                row_str += "🟦"
         rows.append(row_str)
-    return header + "\n".join(rows)
+    return "```\n" + header + "\n" + "\n".join(rows) + "\n```"
 
 def is_ship_sunk(ship_coords, hits):
     return all(coord in hits for coord in ship_coords)
@@ -234,6 +239,19 @@ async def shoot(interaction: discord.Interaction, row: str, column: int):
     embed = Embed(title=f"Team {team} Target Grid", description=render_board(board, hits))
     await interaction.channel.send(content=result + extra, embed=embed)
     await interaction.followup.send("Shot processed.", ephemeral=True)
+
+@bot.tree.command(name="delete", description="Delete a battleship game by its game ID (admin only)")
+@app_commands.describe(gameid="The ID of the game to delete")
+async def delete(interaction: discord.Interaction, gameid: str):
+    if not is_admin(interaction.user):
+        await interaction.response.send_message("You do not have permission to use this command.", ephemeral=True)
+        return
+
+    result = collection.delete_one({"game_id": gameid})
+    if result.deleted_count > 0:
+        await interaction.response.send_message(f"Game with ID `{gameid}` has been deleted.", ephemeral=True)
+    else:
+        await interaction.response.send_message(f"No game with ID `{gameid}` was found.", ephemeral=True)
 
 @bot.event
 async def on_ready():
